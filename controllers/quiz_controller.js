@@ -3,6 +3,8 @@ var Sequelize = require('sequelize');
 
 var paginate = require('../helpers/paginate').paginate;
 
+var userController = require('../controllers/user_controller');
+
 // Autoload el quiz asociado a :quizId
 exports.load = function (req, res, next, quizId) {
 
@@ -12,18 +14,32 @@ exports.load = function (req, res, next, quizId) {
             {model: models.User, as: 'Author'}
         ]
     })
-        .then(function (quiz) {
+    .then(function (quiz) {
 
-            if (quiz) {
-                req.quiz = quiz;
-                next();
-            } else {
-                throw new Error('No existe ningún quiz con id=' + quizId);
-            }
-        })
-        .catch(function (error) {
-            next(error);
-        });
+        if (quiz) {
+            req.quiz = quiz;
+            next();
+        } else {
+            throw new Error('No existe ningún quiz con id=' + quizId);
+        }
+    })
+    .catch(function (error) {
+        next(error);
+    });
+};
+
+
+// MW que permite acciones solamente si al usuario logeado es admin o es el autor del quiz.
+exports.adminOrAuthorRequired = function(req, res, next){
+
+    var isAdmin  = req.session.user.isAdmin;
+    var isAuthor = req.quiz.AuthorId === req.session.user.id;
+
+    if (isAdmin || isAuthor) {
+        next();
+    } else {
+        res.send(403);
+    }
 };
 
 
@@ -51,37 +67,44 @@ exports.index = function (req, res, next) {
     }
 
     models.Quiz.count(countOptions)
-        .then(function (count) {
+    .then(function (count) {
 
-            var items_per_page = 10;
+        // Paginacion:
 
+        var items_per_page = 10;
 
-            var page = parseInt(req.query.page) || 1;
+        // La pagina a mostrar viene en la query
+        var pageno = parseInt(req.query.pageno) || 1;
 
+        // Crear un string con el HTML que pinta la botonera de paginacion.
+        // Lo añado como una variable local de res para que lo pinte el layout de la aplicacion.
+        res.locals.paginate_control = paginate(count, items_per_page, pageno, req.url);
 
-            res.locals.paginate_control = paginate(count, items_per_page, page, req.url);
+        var findOptions = countOptions;
 
-            var findOptions = countOptions;
+        findOptions.offset = items_per_page * (pageno - 1);
+        findOptions.limit = items_per_page;
+        findOptions.include = [{model: models.User, as: 'Author'}];
 
-            findOptions.offset = items_per_page * (page - 1);
-            findOptions.limit = items_per_page;
-            findOptions.include = [{model: models.User, as: 'Author'}];
+        return models.Quiz.findAll(findOptions);
+    })
+    .then(function (quizzes) {
 
-            return models.Quiz.findAll(findOptions);
-        })
-        .then(function (quizzes) {
-
-            res.render('quizzes/index.ejs', {
-                quizzes: quizzes,
-                search: search,
-                title: title
-            });
-        })
-        .catch(function (error) {
-            next(error);
+        res.render('quizzes/index.ejs', {
+            quizzes: quizzes,
+            search: search,
+            title: title
         });
+    })
+    .catch(function (error) {
+        next(error);
+    });
 };
 
+
+// function modifyQuizTipsAddingUsername (tips, authorId2username){
+
+// }
 
 
 // GET /quizzes/:quizId
@@ -109,14 +132,14 @@ exports.show = function (req, res, next) {
     // modifyQuizTipsAddingUsername(req.quiz.Tips, authorId2username);
 
     Promise.all(consultPromises)
-        .then(function(){
+    .then(function(){
 
-            req.quiz.Tips.forEach(function(tip){
-                tip.username = authorId2username[tip.AuthorId.toString()];
-            });
-
-            res.render('quizzes/show', {quiz: req.quiz});
+        req.quiz.Tips.forEach(function(tip){
+            tip.username = authorId2username[tip.AuthorId.toString()];
         });
+
+        res.render('quizzes/show', {quiz: req.quiz});
+    });
 };
 
 
@@ -127,7 +150,6 @@ exports.new = function (req, res, next) {
 
     res.render('quizzes/new', {quiz: quiz});
 };
-
 
 
 // POST /quizzes/create
@@ -143,36 +165,23 @@ exports.create = function (req, res, next) {
 
     // guarda en DB los campos pregunta y respuesta de quiz
     quiz.save({fields: ["question", "answer", "AuthorId"]})
-        .then(function (quiz) {
-            req.flash('success', 'Quiz creado con éxito.');
-            res.redirect('/quizzes/' + quiz.id);
-        })
-        .catch(Sequelize.ValidationError, function (error) {
+    .then(function (quiz) {
+        req.flash('success', 'Quiz creado con éxito.');
+        res.redirect('/quizzes/' + quiz.id);
+    })
+    .catch(Sequelize.ValidationError, function (error) {
 
-            req.flash('error', 'Errores en el formulario:');
-            for (var i in error.errors) {
-                req.flash('error', error.errors[i].value);
-            }
+        req.flash('error', 'Errores en el formulario:');
+        for (var i in error.errors) {
+            req.flash('error', error.errors[i].value);
+        }
 
-            res.render('quizzes/new', {quiz: quiz});
-        })
-        .catch(function (error) {
-            req.flash('error', 'Error al crear un Quiz: ' + error.message);
-            next(error);
-        });
-};
-
-
-exports.adminOrAuthorRequired = function(req, res, next){
-
-    var isAdmin  = req.session.user.isAdmin;
-    var isAuthor = req.quiz.AuthorId === req.session.user.id;
-
-    if (isAdmin || isAuthor) {
-        next();
-    } else {
-        res.send(403);
-    }
+        res.render('quizzes/new', {quiz: quiz});
+    })
+    .catch(function (error) {
+        req.flash('error', 'Error al crear un Quiz: ' + error.message);
+        next(error);
+    });
 };
 
 
@@ -190,23 +199,23 @@ exports.update = function (req, res, next) {
     req.quiz.answer = req.body.answer;
 
     req.quiz.save({fields: ["question", "answer"]})
-        .then(function (quiz) {
-            req.flash('success', 'Quiz editado con éxito.');
-            res.redirect('/quizzes/' + req.quiz.id);
-        })
-        .catch(Sequelize.ValidationError, function (error) {
+    .then(function (quiz) {
+        req.flash('success', 'Quiz editado con éxito.');
+        res.redirect('/quizzes/' + req.quiz.id);
+    })
+    .catch(Sequelize.ValidationError, function (error) {
 
-            req.flash('error', 'Errores en el formulario:');
-            for (var i in error.errors) {
-                req.flash('error', error.errors[i].value);
-            }
+        req.flash('error', 'Errores en el formulario:');
+        for (var i in error.errors) {
+            req.flash('error', error.errors[i].value);
+        }
 
-            res.render('quizzes/edit', {quiz: req.quiz});
-        })
-        .catch(function (error) {
-            req.flash('error', 'Error al editar el Quiz: ' + error.message);
-            next(error);
-        });
+        res.render('quizzes/edit', {quiz: req.quiz});
+    })
+    .catch(function (error) {
+        req.flash('error', 'Error al editar el Quiz: ' + error.message);
+        next(error);
+    });
 };
 
 
@@ -216,7 +225,7 @@ exports.destroy = function (req, res, next) {
     req.quiz.destroy()
     .then(function () {
         req.flash('success', 'Quiz borrado con éxito.');
-        res.redirect('/quizzes');
+        res.redirect('/goback');
     })
     .catch(function (error) {
         req.flash('error', 'Error al editar el Quiz: ' + error.message);
