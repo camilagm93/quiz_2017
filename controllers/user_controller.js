@@ -3,6 +3,16 @@ var Sequelize = require('sequelize');
 
 var paginate = require('../helpers/paginate').paginate;
 
+
+exports.getUsernameForAuthorId = function (AuthorId, authorId2username){
+
+    return models.User.findById(AuthorId)
+    .then(function(user){
+        authorId2username[AuthorId.toString()] = user.username;
+    })
+}
+
+
 // Autoload el user asociado a :userId
 exports.load = function (req, res, next, userId) {
 

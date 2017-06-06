@@ -3,6 +3,8 @@ var Sequelize = require('sequelize');
 
 var paginate = require('../helpers/paginate').paginate;
 
+var userController = require('../controllers/user_controller');
+
 // Autoload el quiz asociado a :quizId
 exports.load = function (req, res, next, quizId) {
 
@@ -13,6 +15,7 @@ exports.load = function (req, res, next, quizId) {
         ]
     })
     .then(function (quiz) {
+
         if (quiz) {
             req.quiz = quiz;
             next();
@@ -35,7 +38,6 @@ exports.adminOrAuthorRequired = function(req, res, next){
     if (isAdmin || isAuthor) {
         next();
     } else {
-        console.log('Operación prohibida: El usuario logeado no es el autor del quiz, ni un administrador.');
         res.send(403);
     }
 };
@@ -87,6 +89,7 @@ exports.index = function (req, res, next) {
         return models.Quiz.findAll(findOptions);
     })
     .then(function (quizzes) {
+
         res.render('quizzes/index.ejs', {
             quizzes: quizzes,
             search: search,
@@ -99,10 +102,44 @@ exports.index = function (req, res, next) {
 };
 
 
+// function modifyQuizTipsAddingUsername (tips, authorId2username){
+
+// }
+
+
 // GET /quizzes/:quizId
 exports.show = function (req, res, next) {
 
-    res.render('quizzes/show', {quiz: req.quiz});
+    // Antes de renderizar quizzes/show con req.quiz,
+    // necesitamos modificar req.quiz para que las tips
+    // tengan el campo "username"
+
+    var authorId2username = {};
+
+    var allAuthorIdsToConsult = req.quiz.Tips.map(function (tip) {
+        return tip.AuthorId
+    });
+
+    // https://stackoverflow.com/questions/1960473/unique-values-in-an-array
+    var uniqueAuthorIdsToConsult = allAuthorIdsToConsult.filter(function(value, index, self){
+        return self.indexOf(value) === index;
+    });
+
+    var consultPromises = uniqueAuthorIdsToConsult.map(function(AuthorId){
+        return userController.getUsernameForAuthorId(AuthorId, authorId2username)
+    });
+
+    // modifyQuizTipsAddingUsername(req.quiz.Tips, authorId2username);
+
+    Promise.all(consultPromises)
+    .then(function(){
+
+        req.quiz.Tips.forEach(function(tip){
+            tip.username = authorId2username[tip.AuthorId.toString()];
+        });
+
+        res.render('quizzes/show', {quiz: req.quiz});
+    });
 };
 
 

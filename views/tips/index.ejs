@@ -9,7 +9,7 @@
             <% if (tip.accepted ||
                     (session.user && (session.user.isAdmin || (quizAuthorId && quizAuthorId === session.user.id)))) { %>
 
-                <%= tip.text %>
+                <%= tip.text %> <small> (by <span id="author"><%= tip.username ? tip.username : "Anómino" %></span>) </small>
 
             <% } %>
 
