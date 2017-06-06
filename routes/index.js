@@ -50,6 +50,7 @@ router.get('/author', function (req, res, next) {
     res.render('author');
 });
 
+<<<<<<< .merge_file_a10060
 
 // Autoload de rutas que usen :quizId
 router.param('quizId', quizController.load);
@@ -154,6 +155,12 @@ router.delete('/users/:userId(\\d+)/favourites/:quizId(\\d+)',
     sessionController.adminOrMyselfRequired,
     favouriteController.del);
 
+=======
+// Pagina de ayuda
+router.get('/help', function(req, res, next) {
+    res.render('help');
+});
+>>>>>>> .merge_file_a09268
 
 
 module.exports = router;
